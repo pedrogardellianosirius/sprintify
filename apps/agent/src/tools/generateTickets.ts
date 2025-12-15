@@ -1,13 +1,8 @@
 import { ChatOpenAI } from "@langchain/openai";
-import { readFileSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
 import { z } from "zod";
 import { TicketSchema, type Ticket, type Requirements } from "../types.js";
 import { getGlobalCostTracker } from "./costTracker.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import { readPromptFile } from "../utils/pathResolver.js";
 
 const GenerateTicketsResponseSchema = z.object({
   tickets: z.array(TicketSchema),
@@ -23,10 +18,7 @@ export async function generateTicketsForFeatures(
   totalBatches: number,
   answers?: Record<string, string>
 ): Promise<{ tickets: Ticket[] }> {
-  const systemPrompt = readFileSync(
-    join(__dirname, "../prompts/generateTickets.system.txt"),
-    "utf-8"
-  );
+  const systemPrompt = readPromptFile("generateTickets.system.txt");
 
   // Build user prompt with requirements and optional answers
   let userPrompt = `Generate development tickets for BATCH ${batchNumber} of ${totalBatches} of this project.\n\n`;

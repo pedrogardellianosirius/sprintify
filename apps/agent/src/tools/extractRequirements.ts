@@ -1,21 +1,13 @@
 import { ChatOpenAI } from "@langchain/openai";
-import { readFileSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
 import { RequirementsSchema, type Requirements } from "../types.js";
 import { getGlobalCostTracker } from "./costTracker.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import { readPromptFile } from "../utils/pathResolver.js";
 
 /**
  * Extract structured requirements from plain text using LLM
  */
 export async function extractRequirements(plainText: string): Promise<Requirements> {
-  const systemPrompt = readFileSync(
-    join(__dirname, "../prompts/extractRequirements.system.txt"),
-    "utf-8"
-  );
+  const systemPrompt = readPromptFile("extractRequirements.system.txt");
 
   const model = new ChatOpenAI({
     modelName: process.env.OPENAI_MODEL || "gpt-4-turbo-preview",

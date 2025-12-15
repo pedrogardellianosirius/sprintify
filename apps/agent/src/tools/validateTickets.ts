@@ -1,12 +1,7 @@
 import { ChatOpenAI } from "@langchain/openai";
-import { readFileSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
 import type { Ticket, Requirements } from "../types.js";
 import { getGlobalCostTracker } from "./costTracker.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import { readPromptFile } from "../utils/pathResolver.js";
 
 interface ValidationIssue {
   type: string;
@@ -27,10 +22,7 @@ export async function validateTickets(
   tickets: Ticket[],
   requirements: Requirements
 ): Promise<ValidationResult> {
-  const systemPrompt = readFileSync(
-    join(__dirname, "../prompts/validateTickets.system.txt"),
-    "utf-8"
-  );
+  const systemPrompt = readPromptFile("validateTickets.system.txt");
 
   // Build validation prompt
   let userPrompt = `Validate these tickets against the requirements:\n\n`;
