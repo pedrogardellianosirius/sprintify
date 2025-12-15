@@ -207,4 +207,13 @@ If splitting or merging, include new tickets in toAddOrUpdate. Each ticket must 
 // Export types and tools
 export * from "./types.js";
 export { loadProject } from "./tools/persistProject.js";
+export {
+  saveIntegrationConfig,
+  loadIntegrationConfig,
+  deleteIntegrationConfig,
+} from "./tools/integrationConfig.js";
+export { pushTicketsToExternal } from "./tools/pushToExternal.js";
+export { readJiraIssues } from "./integrations/jiraClient.js";
+export { readLinearIssues } from "./integrations/linearClient.js";
+export * from "./integrations/types.js";
 

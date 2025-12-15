@@ -16,12 +16,19 @@ export async function generateTicketsForFeatures(
   features: string[],
   batchNumber: number,
   totalBatches: number,
-  answers?: Record<string, string>
+  answers?: Record<string, string>,
+  externalTicketsContext?: string
 ): Promise<{ tickets: Ticket[] }> {
   const systemPrompt = readPromptFile("generateTickets.system.txt");
 
   // Build user prompt with requirements and optional answers
   let userPrompt = `Generate development tickets for BATCH ${batchNumber} of ${totalBatches} of this project.\n\n`;
+  
+  // Include external tickets context if available (before requirements)
+  if (externalTicketsContext) {
+    userPrompt += externalTicketsContext;
+  }
+  
   userPrompt += `Project: ${requirements.projectName}\n`;
   userPrompt += `Summary: ${requirements.summary}\n\n`;
   userPrompt += `Overall Goals:\n${requirements.goals.map(g => `- ${g}`).join("\n")}\n\n`;
@@ -110,7 +117,8 @@ export async function generateTicketsForFeatures(
 export async function generateTickets(
   requirements: Requirements,
   answers?: Record<string, string>,
-  onProgress?: (batchInfo: { batch: number; total: number; tickets: Ticket[] }) => void
+  onProgress?: (batchInfo: { batch: number; total: number; tickets: Ticket[] }) => void,
+  externalTicketsContext?: string
 ): Promise<{ tickets: Ticket[] }> {
   const FEATURES_PER_BATCH = 3; // Process 3 features at a time for optimal results
   
@@ -135,7 +143,8 @@ export async function generateTickets(
         batchFeatures,
         batchNumber,
         totalBatches,
-        answers
+        answers,
+        externalTicketsContext
       );
 
       allTickets = allTickets.concat(result.tickets);

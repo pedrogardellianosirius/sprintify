@@ -10,6 +10,8 @@ import { validateTickets } from "./tools/validateTickets.js";
 import { persistProject } from "./tools/persistProject.js";
 import { ragSearch } from "./tools/ragSearch.js";
 import { initCostTracker } from "./tools/costTracker.js";
+import { readExternalTickets, formatExternalTicketsAsContext } from "./tools/readExternalTickets.js";
+import { loadIntegrationConfig } from "./tools/integrationConfig.js";
 
 // Global stream callback
 let globalStreamCallback: StreamCallback | undefined;
@@ -107,6 +109,62 @@ async function ragNode(state: GraphState): Promise<Partial<GraphState>> {
 }
 
 /**
+ * Read external tickets node (optional - only if integration is configured)
+ */
+async function readExternalNode(state: GraphState): Promise<Partial<GraphState>> {
+  // Skip if there's already an error
+  if (state.error) {
+    return {};
+  }
+
+  // Only read external tickets if projectId is available
+  if (!state.projectId) {
+    return {};
+  }
+
+  try {
+    // Check if integration is configured
+    const config = await loadIntegrationConfig(state.projectId);
+    if (!config) {
+      // No integration configured, skip
+      return {};
+    }
+
+    console.log(`🔗 Reading existing tickets from ${config.type}...`);
+    globalStreamCallback?.({ 
+      type: 'status', 
+      message: `🔗 Reading existing tickets from ${config.type}...` 
+    });
+
+    const externalTickets = await readExternalTickets(state.projectId);
+    
+    if (externalTickets.length > 0) {
+      console.log(`   Found ${externalTickets.length} existing ticket(s)`);
+      const context = formatExternalTicketsAsContext(externalTickets);
+      
+      globalStreamCallback?.({ 
+        type: 'progress', 
+        message: `📋 Found ${externalTickets.length} existing ticket(s) from ${config.type}`,
+        data: { externalTicketCount: externalTickets.length }
+      });
+
+      return { externalTicketsContext: context };
+    } else {
+      console.log("   No existing tickets found");
+      return {};
+    }
+  } catch (error) {
+    // Reading external tickets is optional, don't fail on error
+    console.warn("Failed to read external tickets:", error);
+    globalStreamCallback?.({ 
+      type: 'progress', 
+      message: `⚠️ Could not read external tickets: ${error instanceof Error ? error.message : 'Unknown error'}` 
+    });
+    return {};
+  }
+}
+
+/**
  * Generate tickets node
  */
 async function generateNode(state: GraphState): Promise<Partial<GraphState>> {
@@ -149,7 +207,8 @@ async function generateNode(state: GraphState): Promise<Partial<GraphState>> {
             data: { ticket }
           });
         });
-      }
+      },
+      state.externalTicketsContext // Pass external tickets context
     );
     console.log(`   Generated ${result.tickets.length} total tickets`);
 
@@ -231,6 +290,11 @@ async function persistNode(state: GraphState): Promise<Partial<GraphState>> {
     const projectId = state.projectId || uuidv4();
     const now = new Date().toISOString();
 
+    // Load existing project to preserve externalMappings if they exist
+    const existingProject = state.projectId 
+      ? await import("./tools/persistProject.js").then(m => m.loadProject(state.projectId!))
+      : null;
+
     const projectState = {
       id: projectId,
       rawText: state.rawText,
@@ -239,6 +303,7 @@ async function persistNode(state: GraphState): Promise<Partial<GraphState>> {
       cost: state.cost,
       createdAt: state.projectId ? state.createdAt || now : now,
       updatedAt: now,
+      externalMappings: existingProject?.externalMappings || {},
     };
 
     await persistProject(projectState);
@@ -309,6 +374,10 @@ export function buildGraph(streamCallback?: StreamCallback) {
         value: (x: string | undefined, y?: string | undefined) => y !== undefined ? y : x,
         default: () => undefined,
       },
+      externalTicketsContext: {
+        value: (x: string | undefined, y?: string | undefined) => y !== undefined ? y : x,
+        default: () => undefined,
+      },
     },
   });
 
@@ -317,6 +386,7 @@ export function buildGraph(streamCallback?: StreamCallback) {
   workflow.addNode("security", securityNode);
   workflow.addNode("extract", extractNode);
   workflow.addNode("rag", ragNode);
+  workflow.addNode("readExternal", readExternalNode);
   workflow.addNode("generate", generateNode);
   workflow.addNode("validate", validateNode);
   workflow.addNode("persist", persistNode);
@@ -331,7 +401,9 @@ export function buildGraph(streamCallback?: StreamCallback) {
   // @ts-ignore
   workflow.addEdge("extract", "rag");
   // @ts-ignore
-  workflow.addEdge("rag", "generate");
+  workflow.addEdge("rag", "readExternal");
+  // @ts-ignore
+  workflow.addEdge("readExternal", "generate");
   // @ts-ignore
   workflow.addEdge("generate", "validate");
   // @ts-ignore

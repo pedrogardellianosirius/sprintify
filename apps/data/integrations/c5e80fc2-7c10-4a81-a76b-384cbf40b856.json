@@ -1,0 +1,10 @@
+{
+  "type": "linear",
+  "credentials": {
+    "apiKey": ""
+  },
+  "projectMapping": {
+    "externalProjectKey": "TES",
+    "teamId": "TES"
+  }
+}

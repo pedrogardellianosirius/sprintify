@@ -1,11 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ProjectState } from "../lib/schemas";
+import type { IntegrationConfig } from "agent";
 import { Upload } from "./components/Upload";
 import { TicketsBoard } from "./components/TicketsBoard";
 import { ChatEditor } from "./components/ChatEditor";
 import { CostMeter } from "./components/CostMeter";
+import { IntegrationConfig as IntegrationConfigModal } from "./components/IntegrationConfig";
+import { IntegrationStatus } from "./components/IntegrationStatus";
+import { PushToIntegration } from "./components/PushToIntegration";
 
 type AppState = "upload" | "tickets";
 
@@ -17,10 +21,19 @@ export default function Home() {
   const [logs, setLogs] = useState<string[]>([]);
   const [generatingTickets, setGeneratingTickets] = useState(false);
   const [validatingTickets, setValidatingTickets] = useState(false);
-  const [currentBatch, setCurrentBatch] = useState<{ current: number; total: number } | null>(null);
+  const [currentBatch, setCurrentBatch] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
+  const [showIntegrationConfig, setShowIntegrationConfig] = useState(false);
+  const [integrationConfig, setIntegrationConfig] =
+    useState<IntegrationConfig | null>(null);
 
   const addLog = (message: string) => {
-    setLogs((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${message}`]);
+    setLogs((prev) => [
+      ...prev,
+      `[${new Date().toLocaleTimeString()}] ${message}`,
+    ]);
   };
 
   const handleGenerate = async (data: {
@@ -76,13 +89,13 @@ export default function Home() {
                 // Handle different event types
                 if (event.type === "status") {
                   addLog(event.message);
-                  
+
                   // Detect when ticket generation starts
                   if (event.message.includes("Generating tickets")) {
                     setGeneratingTickets(true);
                     setValidatingTickets(false);
                   }
-                  
+
                   // Detect when validation starts
                   if (event.message.includes("Validating tickets")) {
                     setGeneratingTickets(false);
@@ -90,23 +103,29 @@ export default function Home() {
                   }
                 } else if (event.type === "progress") {
                   addLog(event.message);
-                  
+
                   // Update batch info if available
                   if (event.data?.batch && event.data?.totalBatches) {
                     setCurrentBatch({
                       current: event.data.batch,
-                      total: event.data.totalBatches
+                      total: event.data.totalBatches,
                     });
                   }
-                  
+
                   // If message indicates all tickets are done
-                  if (event.message.includes("All") && event.message.includes("ticket(s) generated")) {
+                  if (
+                    event.message.includes("All") &&
+                    event.message.includes("ticket(s) generated")
+                  ) {
                     setGeneratingTickets(false);
                     setCurrentBatch(null);
                   }
-                  
+
                   // If validation completes (either successfully or with issues)
-                  if (event.message.includes("validated successfully") || event.message.includes("validation issue")) {
+                  if (
+                    event.message.includes("validated successfully") ||
+                    event.message.includes("validation issue")
+                  ) {
                     setValidatingTickets(false);
                   }
                 } else if (event.type === "error") {
@@ -233,6 +252,57 @@ export default function Home() {
     setProjectState(null);
     setError(null);
     setLogs([]);
+    setIntegrationConfig(null);
+  };
+
+  // Load integration config when project state is available
+  useEffect(() => {
+    if (projectState?.id) {
+      fetch(`/api/integrations/config?projectId=${projectState.id}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && data.type) {
+            // We only get type and projectMapping from API, not full config
+            // Store minimal info for display - full config will be loaded when modal opens
+            setIntegrationConfig({
+              type: data.type,
+              credentials:
+                data.type === "jira"
+                  ? { email: "", apiToken: "", baseUrl: "" }
+                  : { apiKey: "" },
+              projectMapping: data.projectMapping,
+            } as IntegrationConfig);
+          } else {
+            setIntegrationConfig(null);
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to load integration:", err);
+          setIntegrationConfig(null);
+        });
+    } else {
+      setIntegrationConfig(null);
+    }
+  }, [projectState?.id]);
+
+  const handleIntegrationSave = async (config: IntegrationConfig) => {
+    setIntegrationConfig(config);
+    setShowIntegrationConfig(false);
+  };
+
+  const handlePushTickets = async (ticketIds?: string[]) => {
+    if (!projectState) return { success: false, results: [] };
+
+    const response = await fetch("/api/integrations/push", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: projectState.id,
+        ticketIds,
+      }),
+    });
+
+    return response.json();
   };
 
   return (
@@ -255,9 +325,9 @@ export default function Home() {
             <div className="flex items-center gap-2 mb-2">
               <div className="animate-spin h-4 w-4 border-2 border-green-400 border-t-transparent rounded-full"></div>
               <span className="font-semibold text-green-400">
-                {validatingTickets 
+                {validatingTickets
                   ? "Validando..."
-                  : generatingTickets && currentBatch 
+                  : generatingTickets && currentBatch
                     ? `Batch ${currentBatch.current}/${currentBatch.total}`
                     : "Processing..."}
               </span>
@@ -265,13 +335,18 @@ export default function Home() {
             {generatingTickets && currentBatch && (
               <div className="mt-2">
                 <div className="w-full bg-gray-700 rounded-full h-1.5">
-                  <div 
+                  <div
                     className="bg-green-500 h-1.5 rounded-full transition-all duration-500"
-                    style={{ width: `${(currentBatch.current / currentBatch.total) * 100}%` }}
+                    style={{
+                      width: `${(currentBatch.current / currentBatch.total) * 100}%`,
+                    }}
                   ></div>
                 </div>
                 <p className="text-xs text-gray-400 mt-1">
-                  {Math.round((currentBatch.current / currentBatch.total) * 100)}% completado
+                  {Math.round(
+                    (currentBatch.current / currentBatch.total) * 100
+                  )}
+                  % completado
                 </p>
               </div>
             )}
@@ -281,13 +356,18 @@ export default function Home() {
         {/* Logs */}
         <div className="flex-1 overflow-y-auto">
           <div className="p-4">
-            <h2 className="text-xs uppercase font-semibold text-gray-500 mb-3">Process Log</h2>
+            <h2 className="text-xs uppercase font-semibold text-gray-500 mb-3">
+              Process Log
+            </h2>
             {logs.length === 0 ? (
               <p className="text-sm text-gray-500 italic">No activity yet...</p>
             ) : (
               <div className="space-y-1.5 font-mono text-xs">
                 {logs.map((log, i) => (
-                  <div key={i} className="text-green-400 animate-fadeIn break-words">
+                  <div
+                    key={i}
+                    className="text-green-400 animate-fadeIn break-words"
+                  >
                     {log}
                   </div>
                 ))}
@@ -302,11 +382,15 @@ export default function Home() {
             <div className="text-xs space-y-1">
               <div className="flex justify-between text-gray-400">
                 <span>Tickets:</span>
-                <span className="text-white font-semibold">{projectState.tickets?.length || 0}</span>
+                <span className="text-white font-semibold">
+                  {projectState.tickets?.length || 0}
+                </span>
               </div>
               <div className="flex justify-between text-gray-400">
                 <span>Cost:</span>
-                <span className="text-green-400 font-semibold">${projectState.cost?.usd?.toFixed(4) || '0.0000'}</span>
+                <span className="text-green-400 font-semibold">
+                  ${projectState.cost?.usd?.toFixed(4) || "0.0000"}
+                </span>
               </div>
             </div>
           </div>
@@ -325,27 +409,34 @@ export default function Home() {
           )}
 
           {/* Ticket Generation Progress with Skeletons */}
-          {(state !== "tickets") && ((generatingTickets && currentBatch) || validatingTickets) ? (
+          {state !== "tickets" &&
+          ((generatingTickets && currentBatch) || validatingTickets) ? (
             <div className="p-6 mb-6">
               {generatingTickets && currentBatch && (
                 <div className="mb-4">
                   <div className="flex justify-between items-center mb-2">
                     <h3 className="text-lg font-semibold text-gray-900">
-                      Generando Tickets - Sección {currentBatch.current}/{currentBatch.total}
+                      Generando Tickets - Sección {currentBatch.current}/
+                      {currentBatch.total}
                     </h3>
                     <span className="text-sm text-gray-600">
-                      {Math.round((currentBatch.current / currentBatch.total) * 100)}%
+                      {Math.round(
+                        (currentBatch.current / currentBatch.total) * 100
+                      )}
+                      %
                     </span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
+                    <div
                       className="bg-blue-600 h-2 rounded-full transition-all duration-500"
-                      style={{ width: `${(currentBatch.current / currentBatch.total) * 100}%` }}
+                      style={{
+                        width: `${(currentBatch.current / currentBatch.total) * 100}%`,
+                      }}
                     ></div>
                   </div>
                 </div>
               )}
-              
+
               {validatingTickets && (
                 <div className="mb-4">
                   <div className="flex items-center gap-2 mb-2">
@@ -356,11 +447,14 @@ export default function Home() {
                   </div>
                 </div>
               )}
-              
+
               {/* Skeleton Tickets */}
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {[...Array(12)].map((_, i) => (
-                  <div key={i} className="animate-pulse bg-gray-100 rounded-lg p-4 border border-gray-200">
+                  <div
+                    key={i}
+                    className="animate-pulse bg-gray-100 rounded-lg p-4 border border-gray-200"
+                  >
                     <div className="h-4 bg-gray-300 rounded w-3/4 mb-3"></div>
                     <div className="h-3 bg-gray-200 rounded w-full mb-2"></div>
                     <div className="h-3 bg-gray-200 rounded w-5/6 mb-3"></div>
@@ -379,16 +473,17 @@ export default function Home() {
           ) : null}
 
           {/* Upload State */}
-          {state === "upload" && !((generatingTickets && currentBatch) || validatingTickets) && (
-            <Upload onGenerate={handleGenerate} isLoading={isLoading} />
-          )}
+          {state === "upload" &&
+            !((generatingTickets && currentBatch) || validatingTickets) && (
+              <Upload onGenerate={handleGenerate} isLoading={isLoading} />
+            )}
 
           {/* Tickets State */}
           {state === "tickets" && projectState && projectState.tickets && (
             <>
               {/* Action Bar */}
               <div className="flex flex-wrap gap-3 items-center justify-between bg-white p-4 rounded-lg border border-gray-200">
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
                   <button
                     onClick={() => handleExport("json")}
                     className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
@@ -407,6 +502,19 @@ export default function Home() {
                   >
                     Export Markdown
                   </button>
+                  <div className="border-l border-gray-300 h-6 mx-2" />
+                  <IntegrationStatus
+                    projectId={projectState.id}
+                    onConfigure={() => setShowIntegrationConfig(true)}
+                  />
+                  {integrationConfig && (
+                    <PushToIntegration
+                      projectId={projectState.id}
+                      tickets={projectState.tickets}
+                      onPush={handlePushTickets}
+                      integrationConfig={integrationConfig}
+                    />
+                  )}
                 </div>
                 <button
                   onClick={handleReset}
@@ -424,13 +532,20 @@ export default function Home() {
                 tickets={projectState.tickets || []}
                 projectName={projectState.requirements?.projectName}
               />
-
-              
             </>
+          )}
+
+          {/* Integration Config Modal */}
+          {showIntegrationConfig && projectState && (
+            <IntegrationConfigModal
+              projectId={projectState.id}
+              onSave={handleIntegrationSave}
+              onClose={() => setShowIntegrationConfig(false)}
+              existingConfig={integrationConfig}
+            />
           )}
         </div>
       </main>
     </div>
   );
 }
-

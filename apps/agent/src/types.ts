@@ -55,6 +55,7 @@ export const ProjectStateSchema = z.object({
   cost: CostSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
+  externalMappings: z.record(z.string(), z.string()).optional(), // ticket.id -> external issue key/ID
 });
 
 export type ProjectState = z.infer<typeof ProjectStateSchema>;
@@ -93,5 +94,6 @@ export interface GraphState {
   cost: Cost;
   error?: string;
   createdAt?: string;
+  externalTicketsContext?: string; // Context from external tickets (Jira/Linear)
 }
 

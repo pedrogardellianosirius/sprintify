@@ -74,3 +74,52 @@ export const CostRequestSchema = z.object({
   projectId: z.string(),
 });
 
+// Integration schemas
+export const IntegrationConfigRequestSchema = z.object({
+  projectId: z.string(),
+  config: z.object({
+    type: z.enum(["jira", "linear"]),
+    credentials: z.union([
+      z.object({
+        email: z.string().email(),
+        apiToken: z.string().min(1),
+        baseUrl: z.string().url(),
+      }),
+      z.object({
+        apiKey: z.string().min(1),
+      }),
+    ]),
+    projectMapping: z.object({
+      externalProjectKey: z.string().min(1),
+      externalProjectName: z.string().optional(),
+      teamId: z.string().optional(),
+      projectId: z.string().optional(),
+    }),
+  }),
+});
+
+export const PushRequestSchema = z.object({
+  projectId: z.string(),
+  ticketIds: z.array(z.string()).optional(),
+});
+
+export const TestConnectionRequestSchema = z.object({
+  type: z.enum(["jira", "linear"]),
+  credentials: z.union([
+    z.object({
+      email: z.string().email(),
+      apiToken: z.string().min(1),
+      baseUrl: z.string().url(),
+    }),
+    z.object({
+      apiKey: z.string().min(1),
+    }),
+  ]),
+  projectMapping: z.object({
+    externalProjectKey: z.string().min(1),
+    externalProjectName: z.string().optional(),
+    teamId: z.string().optional(),
+    projectId: z.string().optional(),
+  }),
+});
+
