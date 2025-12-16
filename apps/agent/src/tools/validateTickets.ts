@@ -36,7 +36,7 @@ export async function validateTickets(
   userPrompt += JSON.stringify(tickets, null, 2);
 
   const model = new ChatOpenAI({
-    modelName: process.env.OPENAI_MODEL || "gpt-4-turbo-preview",
+    modelName: process.env.OPENAI_MODEL || "gpt-4o",
     temperature: 0.1,
   });
 

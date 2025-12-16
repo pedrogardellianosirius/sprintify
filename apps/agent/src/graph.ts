@@ -12,6 +12,7 @@ import { ragSearch } from "./tools/ragSearch.js";
 import { initCostTracker } from "./tools/costTracker.js";
 import { readExternalTickets, formatExternalTicketsAsContext } from "./tools/readExternalTickets.js";
 import { loadIntegrationConfig } from "./tools/integrationConfig.js";
+import { getEmbeddingService } from "./services/embeddingService.js";
 
 // Global stream callback
 let globalStreamCallback: StreamCallback | undefined;
@@ -275,6 +276,75 @@ async function validateNode(state: GraphState): Promise<Partial<GraphState>> {
 }
 
 /**
+ * Generate embeddings for tickets (optional, for semantic search and duplicate detection)
+ */
+async function embedNode(state: GraphState): Promise<Partial<GraphState>> {
+  // Skip if there's already an error
+  if (state.error) {
+    return {};
+  }
+
+  try {
+    console.log("🔢 Generating ticket embeddings...");
+    globalStreamCallback?.({ type: 'status', message: '🔢 Generating ticket embeddings...' });
+
+    if (!state.tickets || state.tickets.length === 0) {
+      console.log("   No tickets to embed, skipping...");
+      return {};
+    }
+
+    const embeddingService = getEmbeddingService();
+    const projectId = state.projectId || 'temp';
+
+    // Generate embeddings for all tickets
+    const embeddings = await embeddingService.generateTicketEmbeddings(
+      state.tickets,
+      projectId
+    );
+
+    // Save embeddings if we have a project ID
+    if (state.projectId) {
+      embeddingService.saveEmbeddings(state.projectId, embeddings);
+      console.log(`   💾 Saved embeddings for ${embeddings.length} ticket(s)`);
+    }
+
+    // Check for potential duplicates
+    const duplicates = await embeddingService.findDuplicates(state.tickets, 0.85);
+    if (duplicates.length > 0) {
+      console.log(`   ⚠️ Found ${duplicates.length} potential duplicate ticket pair(s)`);
+
+      // Log the duplicates
+      for (const dup of duplicates.slice(0, 5)) { // Show max 5
+        console.log(`      - ${dup.ticket1} ↔ ${dup.ticket2} (similarity: ${(dup.score * 100).toFixed(1)}%)`);
+      }
+
+      globalStreamCallback?.({
+        type: 'progress',
+        message: `⚠️ Found ${duplicates.length} potential duplicate ticket pair(s)`,
+        data: { duplicates },
+      });
+    }
+
+    console.log(`   ✅ Generated embeddings for ${embeddings.length} ticket(s)`);
+    globalStreamCallback?.({
+      type: 'progress',
+      message: `✅ Generated embeddings for ${embeddings.length} ticket(s)`,
+      data: { embeddingCount: embeddings.length },
+    });
+
+    return {};
+  } catch (error) {
+    // Embeddings are optional, don't fail the pipeline
+    console.warn("   ⚠️ Embedding generation failed:", error instanceof Error ? error.message : error);
+    globalStreamCallback?.({
+      type: 'progress',
+      message: `⚠️ Embedding generation skipped: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    });
+    return {};
+  }
+}
+
+/**
  * Persist project node
  */
 async function persistNode(state: GraphState): Promise<Partial<GraphState>> {
@@ -389,9 +459,12 @@ export function buildGraph(streamCallback?: StreamCallback) {
   workflow.addNode("readExternal", readExternalNode);
   workflow.addNode("generate", generateNode);
   workflow.addNode("validate", validateNode);
+  workflow.addNode("embed", embedNode);
   workflow.addNode("persist", persistNode);
 
   // Define edges
+  // Workflow: parse → security → extract → rag → readExternal → generate → validate → persist → embed → END
+  // Note: persist runs before embed so projectId is available for saving embeddings
   // @ts-ignore - StateGraph type inference issue with channels
   workflow.setEntryPoint("parse");
   // @ts-ignore
@@ -409,7 +482,9 @@ export function buildGraph(streamCallback?: StreamCallback) {
   // @ts-ignore
   workflow.addEdge("validate", "persist");
   // @ts-ignore
-  workflow.addEdge("persist", END);
+  workflow.addEdge("persist", "embed");
+  // @ts-ignore
+  workflow.addEdge("embed", END);
 
   return workflow.compile();
 }

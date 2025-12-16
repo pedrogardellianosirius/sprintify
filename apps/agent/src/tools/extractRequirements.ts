@@ -10,7 +10,7 @@ export async function extractRequirements(plainText: string): Promise<Requiremen
   const systemPrompt = readPromptFile("extractRequirements.system.txt");
 
   const model = new ChatOpenAI({
-    modelName: process.env.OPENAI_MODEL || "gpt-4-turbo-preview",
+    modelName: process.env.OPENAI_MODEL || "gpt-4o",
     temperature: 0.1,
   });
 
