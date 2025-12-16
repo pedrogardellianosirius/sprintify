@@ -13,6 +13,14 @@ import { PushToIntegration } from "./components/PushToIntegration";
 
 type AppState = "upload" | "tickets";
 
+interface ProjectSummary {
+  id: string;
+  projectName: string;
+  ticketCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export default function Home() {
   const [state, setState] = useState<AppState>("upload");
   const [projectState, setProjectState] = useState<ProjectState | null>(null);
@@ -28,6 +36,8 @@ export default function Home() {
   const [showIntegrationConfig, setShowIntegrationConfig] = useState(false);
   const [integrationConfig, setIntegrationConfig] =
     useState<IntegrationConfig | null>(null);
+  const [pastProjects, setPastProjects] = useState<ProjectSummary[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
 
   const addLog = (message: string) => {
     setLogs((prev) => [
@@ -35,6 +45,52 @@ export default function Home() {
       `[${new Date().toLocaleTimeString()}] ${message}`,
     ]);
   };
+
+  const fetchPastProjects = async () => {
+    setLoadingProjects(true);
+    try {
+      const response = await fetch("/api/projects");
+      if (response.ok) {
+        const projects = await response.json();
+        setPastProjects(projects);
+      }
+    } catch (err) {
+      console.error("Failed to fetch past projects:", err);
+    } finally {
+      setLoadingProjects(false);
+    }
+  };
+
+  const loadProject = async (projectId: string) => {
+    setIsLoading(true);
+    setError(null);
+    setLogs([]);
+    addLog(`Loading project ${projectId}...`);
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}`);
+      if (!response.ok) {
+        throw new Error("Failed to load project");
+      }
+
+      const project = await response.json();
+      setProjectState(project);
+      setState("tickets");
+      addLog(`✅ Loaded project: ${project.requirements?.projectName || "Unnamed"}`);
+      addLog(`📋 ${project.tickets?.length || 0} tickets`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      setError(errorMessage);
+      addLog(`❌ Error: ${errorMessage}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch past projects on mount
+  useEffect(() => {
+    fetchPastProjects();
+  }, []);
 
   const handleGenerate = async (data: {
     text?: string;
@@ -144,6 +200,8 @@ export default function Home() {
                   addLog("🎉 Tickets generated successfully!");
 
                   setState("tickets");
+                  // Refresh past projects list
+                  fetchPastProjects();
                 }
               } catch (e) {
                 console.error("Failed to parse event:", e);
@@ -370,6 +428,46 @@ export default function Home() {
                   >
                     {log}
                   </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Past Projects */}
+          <div className="p-4 border-t border-gray-800">
+            <h2 className="text-xs uppercase font-semibold text-gray-500 mb-3">
+              Past Projects
+            </h2>
+            {loadingProjects ? (
+              <div className="flex items-center gap-2 text-gray-500 text-sm">
+                <div className="animate-spin h-3 w-3 border border-gray-500 border-t-transparent rounded-full"></div>
+                Loading...
+              </div>
+            ) : pastProjects.length === 0 ? (
+              <p className="text-sm text-gray-500 italic">No projects yet...</p>
+            ) : (
+              <div className="space-y-2">
+                {pastProjects.map((project) => (
+                  <button
+                    key={project.id}
+                    onClick={() => loadProject(project.id)}
+                    disabled={isLoading || projectState?.id === project.id}
+                    className={`w-full text-left p-2 rounded-lg transition-colors ${
+                      projectState?.id === project.id
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-800 hover:bg-gray-700 text-gray-300"
+                    } ${isLoading ? "opacity-50 cursor-not-allowed" : ""}`}
+                  >
+                    <div className="font-medium text-sm truncate">
+                      {project.projectName}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-0.5 flex justify-between">
+                      <span>{project.ticketCount} tickets</span>
+                      <span>
+                        {new Date(project.updatedAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </button>
                 ))}
               </div>
             )}
