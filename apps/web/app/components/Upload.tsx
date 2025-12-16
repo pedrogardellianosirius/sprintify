@@ -4,11 +4,22 @@ import { useState, useCallback } from "react";
 import { fileToBase64 } from "../../lib/adapters";
 
 interface UploadProps {
-  onGenerate: (data: { text?: string; fileData?: string; fileName?: string }) => void;
+  onGenerate: (data: {
+    text?: string;
+    fileData?: string;
+    fileName?: string;
+  }) => void;
   isLoading: boolean;
+  integrationConfig?: { type: "jira" | "linear"; projectMapping: any } | null;
+  onConfigureIntegration?: () => void;
 }
 
-export function Upload({ onGenerate, isLoading }: UploadProps) {
+export function Upload({
+  onGenerate,
+  isLoading,
+  integrationConfig,
+  onConfigureIntegration,
+}: UploadProps) {
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -54,8 +65,35 @@ export function Upload({ onGenerate, isLoading }: UploadProps) {
 
   return (
     <div className="w-full max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-md">
-      <h2 className="text-2xl font-bold mb-4">Upload Requirements</h2>
-      
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold">Upload Requirements</h2>
+        {onConfigureIntegration && (
+          <div className="flex items-center gap-3">
+            {integrationConfig ? (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-gray-600">
+                  {integrationConfig.type === "jira" ? "🔗 Jira" : "🔗 Linear"}{" "}
+                  configured
+                </span>
+                <button
+                  onClick={onConfigureIntegration}
+                  className="text-blue-600 hover:text-blue-700 underline"
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={onConfigureIntegration}
+                className="text-sm text-blue-600 hover:text-blue-700 underline"
+              >
+                Configure Integration
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="space-y-4">
         {/* File upload area */}
         <div
@@ -88,9 +126,7 @@ export function Upload({ onGenerate, isLoading }: UploadProps) {
                 </div>
               ) : (
                 <div>
-                  <p className="font-medium">
-                    Drop your PDF or text file here
-                  </p>
+                  <p className="font-medium">Drop your PDF or text file here</p>
                   <p className="text-sm text-gray-500 mt-1">
                     or click to browse (max 5MB)
                   </p>
@@ -109,7 +145,10 @@ export function Upload({ onGenerate, isLoading }: UploadProps) {
 
         {/* Text area */}
         <div>
-          <label htmlFor="text-input" className="block text-sm font-medium mb-2">
+          <label
+            htmlFor="text-input"
+            className="block text-sm font-medium mb-2"
+          >
             Paste your requirements
           </label>
           <textarea
@@ -143,4 +182,3 @@ export function Upload({ onGenerate, isLoading }: UploadProps) {
     </div>
   );
 }
-

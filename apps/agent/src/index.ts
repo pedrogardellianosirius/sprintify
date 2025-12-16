@@ -5,6 +5,8 @@ import { loadProject, persistProject } from "./tools/persistProject.js";
 import { initCostTracker, getGlobalCostTracker } from "./tools/costTracker.js";
 import { batchedEditTickets, summarizeEditResults } from "./services/batchedEditService.js";
 import type { ProjectState, ParseDocumentInput, GraphState, EditBatchResult } from "./types.js";
+import type { IntegrationConfig } from "./integrations/types.js";
+import { saveIntegrationConfig } from "./tools/integrationConfig.js";
 
 export type StreamEvent = {
   type: 'status' | 'progress' | 'error' | 'complete';
@@ -21,10 +23,19 @@ export async function runAgent(input: {
   file?: { buffer: Buffer; mime: string };
   text?: string;
   projectId?: string;
+  integrationConfig?: IntegrationConfig;
   onStream?: StreamCallback;
 }): Promise<ProjectState> {
   // Initialize cost tracker
   initCostTracker(process.env.OPENAI_MODEL || "gpt-4o");
+
+  // Create projectId early if integration is configured (before document upload)
+  let projectId = input.projectId;
+  if (input.integrationConfig && !projectId) {
+    projectId = uuidv4();
+    // Save integration config early
+    await saveIntegrationConfig(projectId, input.integrationConfig);
+  }
 
   // Stream parsing status
   input.onStream?.({ type: 'status', message: '📄 Parsing document...' });
@@ -40,10 +51,11 @@ export async function runAgent(input: {
 
   // Build initial state
   const initialState: GraphState = {
-    projectId: input.projectId,
+    projectId,
     rawText,
     tickets: [],
     cost: { tokensIn: 0, tokensOut: 0, usd: 0 },
+    integrationConfig: input.integrationConfig,
   };
 
   // Run the graph with streaming
@@ -149,7 +161,7 @@ export async function editTickets(
 
 // Export types and tools
 export * from "./types.js";
-export { loadProject } from "./tools/persistProject.js";
+export { loadProject, listProjects } from "./tools/persistProject.js";
 export {
   saveIntegrationConfig,
   loadIntegrationConfig,

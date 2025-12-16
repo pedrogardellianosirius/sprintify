@@ -10,11 +10,12 @@ import { CostMeter } from "./components/CostMeter";
 import { IntegrationConfig as IntegrationConfigModal } from "./components/IntegrationConfig";
 import { IntegrationStatus } from "./components/IntegrationStatus";
 import { PushToIntegration } from "./components/PushToIntegration";
+import { ProjectHistory } from "./components/ProjectHistory";
 
-type AppState = "upload" | "tickets";
+type AppState = "integration" | "upload" | "tickets";
 
 export default function Home() {
-  const [state, setState] = useState<AppState>("upload");
+  const [state, setState] = useState<AppState>("integration");
   const [projectState, setProjectState] = useState<ProjectState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,10 +48,22 @@ export default function Home() {
     addLog("Starting ticket generation...");
 
     try {
+      const requestBody: {
+        text?: string;
+        fileData?: string;
+        fileName?: string;
+        integrationConfig?: IntegrationConfig;
+      } = { ...data };
+
+      // Include integration config if configured
+      if (integrationConfig) {
+        requestBody.integrationConfig = integrationConfig;
+      }
+
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -248,11 +261,62 @@ export default function Home() {
   };
 
   const handleReset = () => {
-    setState("upload");
+    setState("integration");
     setProjectState(null);
     setError(null);
     setLogs([]);
     setIntegrationConfig(null);
+  };
+
+  const handleLoadProject = async (projectId: string) => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}`);
+      if (!response.ok) {
+        throw new Error("Failed to load project");
+      }
+
+      const project = await response.json();
+      setProjectState(project);
+      setState("tickets");
+
+      // Load integration config if exists
+      const configResponse = await fetch(
+        `/api/integrations/config?projectId=${projectId}`
+      );
+      if (configResponse.ok) {
+        const configData = await configResponse.json();
+        if (configData && configData.type) {
+          setIntegrationConfig({
+            type: configData.type,
+            credentials:
+              configData.type === "jira"
+                ? { email: "", apiToken: "", baseUrl: "" }
+                : { apiKey: "" },
+            projectMapping: configData.projectMapping,
+          } as IntegrationConfig);
+        }
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleIntegrationConfigure = (config: IntegrationConfig) => {
+    setIntegrationConfig(config);
+    setShowIntegrationConfig(false);
+    // Integration config will be saved by backend when project is created
+    setState("upload");
+  };
+
+  const handleIntegrationSkip = () => {
+    setIntegrationConfig(null);
+    setState("upload");
   };
 
   // Load integration config when project state is available
@@ -318,6 +382,12 @@ export default function Home() {
             AI-powered ticket generation
           </p>
         </div>
+
+        {/* Project History */}
+        <ProjectHistory
+          onLoadProject={handleLoadProject}
+          currentProjectId={projectState?.id}
+        />
 
         {/* Process Status */}
         {isLoading && (
@@ -472,10 +542,29 @@ export default function Home() {
             </div>
           ) : null}
 
+          {/* Integration State */}
+          {state === "integration" && (
+            <div className="w-full max-w-4xl mx-auto">
+              <IntegrationConfigModal
+                projectId={crypto.randomUUID()} // Temporary ID, will be replaced when project is created
+                onSave={handleIntegrationConfigure}
+                onClose={() => {}}
+                existingConfig={integrationConfig}
+                inline={true}
+                onSkip={handleIntegrationSkip}
+              />
+            </div>
+          )}
+
           {/* Upload State */}
           {state === "upload" &&
             !((generatingTickets && currentBatch) || validatingTickets) && (
-              <Upload onGenerate={handleGenerate} isLoading={isLoading} />
+              <Upload
+                onGenerate={handleGenerate}
+                isLoading={isLoading}
+                integrationConfig={integrationConfig}
+                onConfigureIntegration={() => setState("integration")}
+              />
             )}
 
           {/* Tickets State */}

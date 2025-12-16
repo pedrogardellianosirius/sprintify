@@ -185,5 +185,6 @@ export interface GraphState {
   createdAt?: string;
   externalTicketsContext?: string; // Context from external tickets (Jira/Linear)
   batchContext?: BatchContext; // Context from previous batches
+  integrationConfig?: import("./integrations/types.js").IntegrationConfig; // Integration config passed from outside
 }
 

@@ -11,7 +11,12 @@ export async function POST(request: NextRequest) {
     const validated = GenerateRequestSchema.parse(body);
 
     // Prepare input for agent
-    const agentInput: any = {};
+    const agentInput: {
+      file?: { buffer: Buffer; mime: string };
+      text?: string;
+      integrationConfig?: any;
+      onStream?: (event: any) => void;
+    } = {};
 
     if (validated.text) {
       agentInput.text = validated.text;
@@ -27,6 +32,11 @@ export async function POST(request: NextRequest) {
         JSON.stringify({ error: "Either text or fileData must be provided" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
+    }
+
+    // Add integration config if provided
+    if (validated.integrationConfig) {
+      agentInput.integrationConfig = validated.integrationConfig;
     }
 
     // Create a TransformStream for streaming

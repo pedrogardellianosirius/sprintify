@@ -13,6 +13,7 @@ import { initCostTracker } from "./tools/costTracker.js";
 import { readExternalTickets, formatExternalTicketsAsContext } from "./tools/readExternalTickets.js";
 import { loadIntegrationConfig } from "./tools/integrationConfig.js";
 import { getEmbeddingService } from "./services/embeddingService.js";
+import type { IntegrationConfig } from "./integrations/types.js";
 
 // Global stream callback
 let globalStreamCallback: StreamCallback | undefined;
@@ -58,7 +59,10 @@ async function extractNode(state: GraphState): Promise<Partial<GraphState>> {
     console.log("📋 Extracting requirements...");
     globalStreamCallback?.({ type: 'status', message: '📋 Extracting requirements...' });
     
-    const requirements = await extractRequirements(state.rawText);
+    const requirements = await extractRequirements(
+      state.rawText,
+      state.externalTicketsContext
+    );
     console.log(`   Extracted requirements: ${requirements.projectName}`);
     globalStreamCallback?.({ 
       type: 'progress', 
@@ -118,14 +122,18 @@ async function readExternalNode(state: GraphState): Promise<Partial<GraphState>>
     return {};
   }
 
-  // Only read external tickets if projectId is available
-  if (!state.projectId) {
-    return {};
-  }
-
   try {
-    // Check if integration is configured
-    const config = await loadIntegrationConfig(state.projectId);
+    // Check if integration is configured (either from state or from projectId)
+    let config: IntegrationConfig | null = null;
+    
+    if (state.integrationConfig) {
+      // Integration config provided directly (early configuration)
+      config = state.integrationConfig;
+    } else if (state.projectId) {
+      // Legacy: load from projectId
+      config = await loadIntegrationConfig(state.projectId);
+    }
+    
     if (!config) {
       // No integration configured, skip
       return {};
@@ -137,7 +145,8 @@ async function readExternalNode(state: GraphState): Promise<Partial<GraphState>>
       message: `🔗 Reading existing tickets from ${config.type}...` 
     });
 
-    const externalTickets = await readExternalTickets(state.projectId);
+    // Read external tickets using config directly (works with or without projectId)
+    const externalTickets = await readExternalTickets(config);
     
     if (externalTickets.length > 0) {
       console.log(`   Found ${externalTickets.length} existing ticket(s)`);
@@ -448,6 +457,10 @@ export function buildGraph(streamCallback?: StreamCallback) {
         value: (x: string | undefined, y?: string | undefined) => y !== undefined ? y : x,
         default: () => undefined,
       },
+      integrationConfig: {
+        value: (x: IntegrationConfig | undefined, y?: IntegrationConfig | undefined) => y !== undefined ? y : x,
+        default: () => undefined,
+      },
     },
   });
 
@@ -470,13 +483,13 @@ export function buildGraph(streamCallback?: StreamCallback) {
   // @ts-ignore
   workflow.addEdge("parse", "security");
   // @ts-ignore
-  workflow.addEdge("security", "extract");
+  workflow.addEdge("security", "readExternal");
+  // @ts-ignore
+  workflow.addEdge("readExternal", "extract");
   // @ts-ignore
   workflow.addEdge("extract", "rag");
   // @ts-ignore
-  workflow.addEdge("rag", "readExternal");
-  // @ts-ignore
-  workflow.addEdge("readExternal", "generate");
+  workflow.addEdge("rag", "generate");
   // @ts-ignore
   workflow.addEdge("generate", "validate");
   // @ts-ignore

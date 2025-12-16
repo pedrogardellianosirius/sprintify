@@ -1,4 +1,4 @@
-import type { ExternalTicket } from "../integrations/types.js";
+import type { ExternalTicket, IntegrationConfig } from "../integrations/types.js";
 import { loadIntegrationConfig } from "./integrationConfig.js";
 import { readJiraIssues } from "../integrations/jiraClient.js";
 import { readLinearIssues } from "../integrations/linearClient.js";
@@ -7,9 +7,17 @@ import { readLinearIssues } from "../integrations/linearClient.js";
  * Read existing tickets from external integration (Jira/Linear)
  */
 export async function readExternalTickets(
-  projectId: string
+  projectIdOrConfig: string | IntegrationConfig
 ): Promise<ExternalTicket[]> {
-  const config = await loadIntegrationConfig(projectId);
+  let config: IntegrationConfig | null;
+  
+  if (typeof projectIdOrConfig === 'string') {
+    // Legacy: projectId provided
+    config = await loadIntegrationConfig(projectIdOrConfig);
+  } else {
+    // New: config provided directly
+    config = projectIdOrConfig;
+  }
 
   if (!config) {
     return [];
@@ -33,8 +41,11 @@ export async function readExternalTickets(
     }
   } catch (error) {
     // Log error but don't fail - this is optional context
+    const identifier = typeof projectIdOrConfig === 'string' 
+      ? projectIdOrConfig 
+      : `${config.type} (${config.projectMapping.externalProjectKey})`;
     console.warn(
-      `Failed to read external tickets for project ${projectId}:`,
+      `Failed to read external tickets for ${identifier}:`,
       error instanceof Error ? error.message : "Unknown error"
     );
     return [];

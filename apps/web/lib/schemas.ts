@@ -53,11 +53,33 @@ export const ProjectStateSchema = z.object({
   updatedAt: z.string(),
 });
 
+// Integration config schema (extracted for reuse)
+export const IntegrationConfigSchema = z.object({
+  type: z.enum(["jira", "linear"]),
+  credentials: z.union([
+    z.object({
+      email: z.string().email(),
+      apiToken: z.string().min(1),
+      baseUrl: z.string().url(),
+    }),
+    z.object({
+      apiKey: z.string().min(1),
+    }),
+  ]),
+  projectMapping: z.object({
+    externalProjectKey: z.string().min(1),
+    externalProjectName: z.string().optional(),
+    teamId: z.string().optional(),
+    projectId: z.string().optional(),
+  }),
+});
+
 // API request schemas
 export const GenerateRequestSchema = z.object({
   text: z.string().optional(),
   fileData: z.string().optional(), // base64 encoded
   fileName: z.string().optional(),
+  integrationConfig: IntegrationConfigSchema.optional(),
 });
 
 export const EditRequestSchema = z.object({
@@ -77,25 +99,7 @@ export const CostRequestSchema = z.object({
 // Integration schemas
 export const IntegrationConfigRequestSchema = z.object({
   projectId: z.string(),
-  config: z.object({
-    type: z.enum(["jira", "linear"]),
-    credentials: z.union([
-      z.object({
-        email: z.string().email(),
-        apiToken: z.string().min(1),
-        baseUrl: z.string().url(),
-      }),
-      z.object({
-        apiKey: z.string().min(1),
-      }),
-    ]),
-    projectMapping: z.object({
-      externalProjectKey: z.string().min(1),
-      externalProjectName: z.string().optional(),
-      teamId: z.string().optional(),
-      projectId: z.string().optional(),
-    }),
-  }),
+  config: IntegrationConfigSchema,
 });
 
 export const PushRequestSchema = z.object({
@@ -105,21 +109,7 @@ export const PushRequestSchema = z.object({
 
 export const TestConnectionRequestSchema = z.object({
   type: z.enum(["jira", "linear"]),
-  credentials: z.union([
-    z.object({
-      email: z.string().email(),
-      apiToken: z.string().min(1),
-      baseUrl: z.string().url(),
-    }),
-    z.object({
-      apiKey: z.string().min(1),
-    }),
-  ]),
-  projectMapping: z.object({
-    externalProjectKey: z.string().min(1),
-    externalProjectName: z.string().optional(),
-    teamId: z.string().optional(),
-    projectId: z.string().optional(),
-  }),
+  credentials: IntegrationConfigSchema.shape.credentials,
+  projectMapping: IntegrationConfigSchema.shape.projectMapping,
 });
 

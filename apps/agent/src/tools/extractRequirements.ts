@@ -6,7 +6,10 @@ import { readPromptFile } from "../utils/pathResolver.js";
 /**
  * Extract structured requirements from plain text using LLM
  */
-export async function extractRequirements(plainText: string): Promise<Requirements> {
+export async function extractRequirements(
+  plainText: string,
+  externalTicketsContext?: string
+): Promise<Requirements> {
   const systemPrompt = readPromptFile("extractRequirements.system.txt");
 
   const model = new ChatOpenAI({
@@ -14,9 +17,16 @@ export async function extractRequirements(plainText: string): Promise<Requiremen
     temperature: 0.1,
   });
 
+  // Build user prompt with optional external tickets context
+  let userPrompt = `Extract requirements from this document:\n\n${plainText}`;
+  
+  if (externalTicketsContext) {
+    userPrompt = `IMPORTANT: The following existing tickets/work items are already in the project management system. When extracting requirements, be aware of these existing items to avoid duplication and ensure consistency:\n\n${externalTicketsContext}\n\n${"=".repeat(80)}\n\nNow extract requirements from this document:\n\n${plainText}`;
+  }
+
   const response = await model.invoke([
     { role: "system", content: systemPrompt },
-    { role: "user", content: `Extract requirements from this document:\n\n${plainText}` },
+    { role: "user", content: userPrompt },
   ]);
 
   // Track costs
