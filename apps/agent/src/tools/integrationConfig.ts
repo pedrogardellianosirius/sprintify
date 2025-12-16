@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
+import { ZodError } from "zod";
 import type { IntegrationConfig } from "../integrations/types.js";
 import { IntegrationConfigSchema } from "../integrations/types.js";
 
@@ -61,13 +62,22 @@ export async function loadIntegrationConfig(
     const parsed = JSON.parse(content);
     return IntegrationConfigSchema.parse(parsed);
   } catch (error) {
-    // File doesn't exist or invalid format
-    if (
-      error instanceof Error &&
-      (error.message.includes("ENOENT") || error.message.includes("JSON"))
-    ) {
+    // File doesn't exist or invalid format - return null instead of throwing
+    if (error instanceof Error) {
+      // File not found
+      if (error.message.includes("ENOENT")) {
+        return null;
+      }
+      // JSON parse error
+      if (error.message.includes("JSON")) {
+        return null;
+      }
+    }
+    // Zod validation error - config exists but is invalid (e.g., empty credentials)
+    if (error instanceof ZodError) {
       return null;
     }
+    // For other errors, still throw to surface unexpected issues
     throw error;
   }
 }
